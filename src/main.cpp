@@ -1,13 +1,27 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
-#include <W5500lwIP.h>
 
-// pinout for W5500-EVB-Pico. Your board might differ.
-#define WIZNET_RSTn 20
+// pinout valid for W5500-EVB-Pico and W5100S. Other boards may differ.
+// See https://docs.wiznet.io/Product/iEthernet/W5100S/w5100s-evb-pico
+// See https://docs.wiznet.io/Product/iEthernet/W5500/w5500-evb-pico
+#define WIZNET_MISO 16
 #define WIZNET_CS   17
+#define WIZNET_SCLK 18
+#define WIZNET_MOSI 19
+#define WIZNET_RSTn 20
 #define WIZNET_INT  21
 
+// Instantiate the right object. They have the same interface.
+#if defined(ARDUINO_WIZNET_5500_EVB_PICO)
+#include <W5500lwIP.h>
 Wiznet5500lwIP eth(WIZNET_CS /* chip select */, SPI, WIZNET_INT /* interrupt */);
+#elif defined (ARDUINO_WIZNET_5100S_EVB_PICO)
+#include <W5100lwIP.h>
+Wiznet5100lwIP eth(WIZNET_CS /* chip select */, SPI, WIZNET_INT /* interrupt */);
+#else
+#error "No idea what board you have."
+#endif
+
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -16,10 +30,10 @@ void setup() {
   Serial.println("Booting");
 
   // Set up SPI pinout to match your HW
-  SPI.setRX(16);
-  SPI.setCS(17);
-  SPI.setSCK(18);
-  SPI.setTX(19);
+  SPI.setRX(WIZNET_MISO);
+  SPI.setCS(WIZNET_CS);
+  SPI.setSCK(WIZNET_SCLK);
+  SPI.setTX(WIZNET_MOSI);
 
   // get the W5500 chip out of reset
   pinMode(WIZNET_RSTn, OUTPUT);
@@ -31,6 +45,7 @@ void setup() {
   // Start the Ethernet port
   if (!eth.begin()) {
     Serial.println("No wired Ethernet hardware detected. Check pinouts, wiring.");
+    while(1) { delay(100); }
   }
   // Wait until IP was acquired
   while(eth.isLinked() == false) {
