@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#include <PubSubClient.h>
 
 // pinout valid for W5500-EVB-Pico and W5100S. Other boards may differ.
 // See https://docs.wiznet.io/Product/iEthernet/W5100S/w5100s-evb-pico
@@ -22,6 +23,55 @@ Wiznet5100lwIP eth(WIZNET_CS /* chip select */, SPI, WIZNET_INT /* interrupt */)
 #error "No idea what board you have."
 #endif
 
+WiFiClient ethClient;
+PubSubClient client(ethClient);
+#define MQTT_SERVER_HOSTNAME "public.cloud.shiftr.io"
+#define MQTT_SERVER_PORT 1883
+#define MQTT_CLIENTID "arduino"
+#define MQTT_USERNAME "public"
+#define MQTT_PASSWORD "public"
+#define MQTT_SUBSCRIBE_TOPIC "/hello"
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD)) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      bool ok = client.publish(MQTT_SUBSCRIBE_TOPIC, "hello world");
+      if(ok) {
+        Serial.println("Published 'hello world' to topic \"" + String(MQTT_SUBSCRIBE_TOPIC) + "\" OK!");
+      } else {
+        Serial.println("Publishing topic \"" + String(MQTT_SUBSCRIBE_TOPIC) + "\" FAILED!");
+      }
+      // ... and resubscribe
+      ok = client.subscribe(MQTT_SUBSCRIBE_TOPIC);
+      if(ok) {
+        Serial.println("Subscribing to topic \"" + String(MQTT_SUBSCRIBE_TOPIC) + "\" OK!");
+      } else {
+        Serial.println("Subscribing to topic \"" + String(MQTT_SUBSCRIBE_TOPIC) + "\" FAILED!");
+      }
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -106,16 +156,26 @@ void setup() {
     }
   });
   ArduinoOTA.begin();
+
+  // startup MQTT client
+  client.setServer(MQTT_SERVER_HOSTNAME, MQTT_SERVER_PORT);
+  client.setCallback(callback);
 }
 
 static unsigned long lastTime = 0;
 static unsigned long interval = 2000; 
 
 void loop() {
-    // toggle built in LED
-    if (millis() - lastTime >= interval) {
-        lastTime = millis();
-        digitalWrite(LED_BUILTIN, digitalRead(LED_BUILTIN) ^ 1);
-    }
-    ArduinoOTA.handle();
+  // handle OTA stuff
+  ArduinoOTA.handle();
+  // handle MQTT stuff
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  // toggle built in LED
+  if (millis() - lastTime >= interval) {
+      lastTime = millis();
+      digitalWrite(LED_BUILTIN, digitalRead(LED_BUILTIN) ^ 1);
+  }
 }
